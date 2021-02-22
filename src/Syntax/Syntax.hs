@@ -33,6 +33,7 @@ data Program t k
            , programFixDefs :: FixDefs
            , programDoc :: String
            }
+deriving instance (Show t, Show k) => Show (Program t k)
 
 {--------------------------------------------------------------------------
   Some instantiations
@@ -72,16 +73,20 @@ data External
                    }
   | ExternalImport{ extImport :: [(Target,(Name,String))]
                   , extRange :: Range }
+  deriving (Show)
+
 
 data ExternalCall
   = ExternalInline String  -- inline everywhere
   | ExternalCall String    -- create a function call
+  deriving (Show)
 
 type FixDefs
   = [FixDef]
 
 data FixDef
   = FixDef Name Fixity Range
+  deriving (Show)
 
 {---------------------------------------------------------------
   Import definitions
@@ -94,7 +99,8 @@ data Import
           , importFullName :: Name     -- ^ fully qualified module name
           , importRange :: Range   -- ^ range of the import declaration
           , importVis   :: Visibility  -- ^ visibility of the module
-          }
+          } 
+    deriving (Show)
 
 
 {--------------------------------------------------------------------------
@@ -108,6 +114,7 @@ type TypeDefGroups t k
 data TypeDefGroup t k
   = TypeDefRec [TypeDef t t k]
   | TypeDefNonRec (TypeDef t t k)
+deriving instance (Show t, Show k) => Show (TypeDefGroup t k)
 
 -- | type definitions.
 data TypeDef t u k
@@ -128,6 +135,7 @@ data TypeDef t u k
             , typeDefIsExtend :: Bool -- ^ True if this is an extension; the binder contains a qualified id (and is not a declaration)
             , typeDefDoc  :: String
             }
+deriving instance (Show t, Show u, Show k) => Show (TypeDef t u k)
 
 data TypeBinder k
   = TypeBinder{ tbinderName :: Name -- ^ name
@@ -135,6 +143,7 @@ data TypeBinder k
               , tbinderNameRange :: Range -- ^ name range
               , tbinderRange :: Range -- ^ total range
               }
+deriving instance (Show k) => Show (TypeBinder k)
 
 -- | Constructor: name, existentials, type parameters, name range, total range, and visibility
 data UserCon t u k
@@ -147,6 +156,7 @@ data UserCon t u k
             , userconVis :: Visibility     -- ^  visibility
             , userconDoc :: String
             }
+deriving instance (Show t, Show u, Show k) => Show (UserCon t u k)
 
 {--------------------------------------------------------------------------
   Definitions
@@ -159,6 +169,7 @@ type DefGroups t
 data DefGroup t
   = DefRec    [Def t]
   | DefNonRec (Def t)
+deriving instance (Show t) => Show (DefGroup t)
 
 type Defs t
   = [Def t]
@@ -172,7 +183,7 @@ data ValueBinder t e
                , binderNameRange :: Range  -- ^ name range
                , binderRange :: Range      -- ^ full range
                }
-
+deriving instance (Show t, Show e) => Show (ValueBinder t e)
 
 --  | A value or function definition
 data Def t
@@ -183,6 +194,7 @@ data Def t
        , defInline :: DefInline
        , defDoc    :: String
        }
+deriving instance (Show t) => Show (Def t)
 
 
 defIsVal def
@@ -221,7 +233,7 @@ data Expr t
              hndlrDeclRange    :: Range,
              hndlrRange        :: Range
             }
-
+deriving instance (Show t) => Show (Expr t)
 
 data HandlerOverride
   = HandlerNoOverride | HandlerOverride
@@ -229,7 +241,7 @@ data HandlerOverride
 
 data HandlerScope
   = HandlerNoScope | HandlerScoped
-  deriving (Eq)
+  deriving (Eq, Show)
 
 data HandlerBranch t
   = HandlerBranch{ hbranchName :: Name
@@ -239,12 +251,15 @@ data HandlerBranch t
                  , hbranchNameRange :: Range
                  , hbranchPatRange  :: Range
                  }
+deriving instance (Show t) => Show (HandlerBranch t)
 
 data Branch t
   = Branch{ branchPattern :: (Pattern t), branchGuards :: [Guard t] }
+deriving instance (Show t) => Show (Branch t)
   
 data Guard t 
   = Guard { guardTest :: (Expr t), guardExpr :: (Expr t) }
+deriving instance (Show t) => Show (Guard t)
 
 -- | Patterns
 data Pattern t
@@ -254,6 +269,7 @@ data Pattern t
   | PatCon    Name    [(Maybe (Name,Range), Pattern t)] Range Range  -- name range and full range
   | PatParens (Pattern t) Range
   | PatLit    Lit
+  deriving (Show)
 
 -- | Literals
 data Lit
@@ -261,6 +277,7 @@ data Lit
   | LitFloat    Double  Range
   | LitChar     Char     Range
   | LitString   String Range
+  deriving (Show)
 
 {--------------------------------------------------------------------------
   types and Kinds
@@ -280,6 +297,7 @@ data KUserType k
   | TpCon      Name                  Range
   | TpParens   (KUserType k)         Range
   | TpAnn      (KUserType k)  k
+deriving instance (Show k) => Show (KUserType k)
 
 type UserType
   = KUserType UserKind
@@ -291,6 +309,7 @@ data UserKind
   | KindArrow  UserKind UserKind
   | KindParens UserKind Range
   | KindNone  -- flags that there is no explicit kind annotation
+  deriving (Show)
 
 
 
