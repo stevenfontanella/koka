@@ -214,7 +214,7 @@ data Expr t
   | Let    (DefGroup t) (Expr t)    Range
   | Bind   (Def t) (Expr t)         Range
   | App    (Expr t) [(Maybe (Name,Range),Expr t)] Range
-  | Var    Name Bool Range
+  | Var    Name Bool Range -- True if the var is an op
   | Lit    Lit
   | Ann    (Expr t) t Range
   | Case   (Expr t) [Branch t]   Range

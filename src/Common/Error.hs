@@ -11,7 +11,7 @@
 -----------------------------------------------------------------------------
 module Common.Error( Error, ErrorMessage(..), errorMsg, ok
                    , catchError, checkError, warningMsg, addWarnings
-                   , ppErrorMessage, errorWarning ) where
+                   , ppErrorMessage, errorWarning, unchecked ) where
 
 import Control.Monad
 import Control.Applicative
@@ -26,6 +26,9 @@ import Common.Message
 -- | Error monad
 data Error a    = Error !ErrorMessage ![(Range,Doc)]
                 | Ok !a ![(Range,Doc)]
+
+unchecked :: Error a -> a
+unchecked (Ok val _) = val
 
 
 -- | Error messages

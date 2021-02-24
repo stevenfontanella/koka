@@ -82,7 +82,9 @@ optional p  = do { p; return True } <|> return False
 parseProgramFromFile :: Bool -> FilePath -> IO (Error UserProgram)
 parseProgramFromFile semiInsert fname
   = do input <- readInput fname
-       return (lexParse semiInsert id program fname 1 input)
+       traceShowM fname
+      --  return $ (\e -> traceShow (programDefs $ unchecked e) e) $ lexParse semiInsert id program fname 1 input
+       return $ lexParse semiInsert id program fname 1 input
 
 
 parseValueDef :: Bool -> FilePath -> Int -> String -> Error UserDef
@@ -1161,6 +1163,16 @@ funDef
                 <|> return []
        return (tpars,pars,rng,resultTp,preds,id)
 
+funDef' :: LexParser ([TypeBinder UserKind],[UserPattern], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
+funDef'
+  = do tpars  <- typeparams
+       (pars,rng) <- parameters True
+       resultTp <- annotRes
+       preds <- do keyword "with"
+                   parens (many1 predicate)
+                <|> return []
+       return (tpars,undefined,rng,resultTp,preds,id)
+
 
 annotRes :: LexParser (Maybe (Maybe UserType,UserType))
 annotRes
@@ -1416,13 +1428,27 @@ funblock
   = do exp <- block
        return (Lam [] exp (getRange exp))
 
+-- here?
 lambda alts
-  = do rng <- keywordOr "fn" alts
+  = trace "lambda" $ 
+    do rng <- keywordOr "fn" alts
        spars <- squantifier
-       (tpars,pars,parsRng,mbtres,preds,ann) <- funDef
+       (tpars,[pat],parsRng,mbtres,preds,ann) <- funDef'
        body <- block
+       let _ = body :: UserExpr
+       let _ = tpars :: [TypeBinder UserKind]
+
+       let ty = Nothing :: Maybe UserType
+       let expr = undefined
+       let nameRange = undefined
+       let range = undefined
+       let name = newName "myName"
+       let ee = Case (Var name False undefined) [Branch pat [Guard guardTrue body]] range
+       -- need to change body as well
        let fun = promote spars tpars preds mbtres
-                  (Lam pars body (combineRanged rng body))
+                  -- (Lam  body (combineRanged rng body))
+                  -- nothing assuming no default arg
+                  (Lam  [ValueBinder (newName "myName") ty Nothing nameRange range] body (combineRanged rng body))
        return (ann fun)
 
 ifexpr
