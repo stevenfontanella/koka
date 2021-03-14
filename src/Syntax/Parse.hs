@@ -1166,14 +1166,12 @@ funDef
 funDef' :: LexParser ([TypeBinder UserKind],[UserPattern], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
 funDef'
   = do tpars  <- typeparams
-      --  b <- branch
-       let rng = undefined
-       pat <- pattern
+       (patterns, rng) <- parensCommasRng pattern
        resultTp <- annotRes
        preds <- do keyword "with"
                    parens (many1 predicate)
                 <|> return []
-       return (tpars,[pat],rng,resultTp,preds,id)
+       return (tpars,patterns,rng,resultTp,preds,id)
 
 
 annotRes :: LexParser (Maybe (Maybe UserType,UserType))
@@ -1435,8 +1433,9 @@ lambda alts
   = trace "lambda" $ 
     do rng <- keywordOr "fn" alts
        spars <- squantifier
-       (tpars,[pattern],parsRng,mbtres,preds,ann) <- funDef'
-       traceShowM pattern
+       (tpars,pats,parsRng,mbtres,preds,ann) <- funDef'
+       let (pattern:_) = pats
+       traceShowM pats
        body <- block
        let _ = body :: UserExpr
        let _ = tpars :: [TypeBinder UserKind]
