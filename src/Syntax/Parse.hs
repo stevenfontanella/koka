@@ -58,6 +58,8 @@ import Syntax.Lexer   ( lexing )
 import Syntax.Layout  ( layout )
 import Syntax.Promote ( promote, promoteType, quantify, promoteFree )
 
+import Core.Pretty
+
 -----------------------------------------------------------
 -- Parser on token stream
 -----------------------------------------------------------
@@ -1163,10 +1165,10 @@ funDef
                 <|> return []
        return (tpars,pars,rng,resultTp,preds,id)
 
-funDef' :: LexParser ([TypeBinder UserKind],[UserPattern], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
+funDef' :: LexParser ([TypeBinder UserKind],[(Maybe (Name, Range), UserPattern)], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
 funDef'
   = do tpars  <- typeparams
-       (patterns, rng) <- parensCommasRng pattern
+       (patterns, rng) <- parensCommasRng namedPattern
        resultTp <- annotRes
        preds <- do keyword "with"
                    parens (many1 predicate)
@@ -1434,22 +1436,23 @@ lambda alts
     do rng <- keywordOr "fn" alts
        spars <- squantifier
        (tpars,pats,parsRng,mbtres,preds,ann) <- funDef'
-       let (pattern:_) = pats
-       traceShowM pats
        body <- block
-       let _ = body :: UserExpr
-       let _ = tpars :: [TypeBinder UserKind]
 
        let ty = Nothing :: Maybe UserType
-       let nameRange = undefined
-       let range = undefined
-       let name = newName "myName"
-       let ee = Case (Var name False nameRange) [Branch pattern [Guard guardTrue body]] range
-       -- need to change body as well
+       let nameRange = parsRng
+       let names = [newName ("myName" ++ (show i)) | i <- [1..length pats]]
+       let combined = PatCon (nameTuple $ length pats) pats parsRng parsRng
+
+       -- need tuple constructor here
+       let tup = Var (nameTuple (length names)) False nameRange {- combineRange something -}
+       let applied = App tup [(Nothing, Var e False nameRange {- fix range -}) | e <- names] nameRange
+       let ee = Case applied [Branch combined [Guard guardTrue body]] parsRng
        let fun = promote spars tpars preds mbtres
                   -- (Lam  body (combineRanged rng body))
                   -- nothing assuming no default arg
-                  (Lam  [ValueBinder name ty Nothing nameRange range] ee (combineRanged rng ee))
+                  (Lam [ValueBinder name Nothing Nothing nameRange parsRng | name <- names] ee (combineRanged rng ee))
+                  -- (Lam  [ValueBinder name ty Nothing nameRange parsRng] ee (combineRanged rng ee))
+       traceShowM fun
        return (ann fun)
 
 ifexpr

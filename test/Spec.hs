@@ -14,6 +14,8 @@ import Test.Hspec
 import Test.Hspec.Core.Runner
 import Test.Hspec.Core.Formatters hiding (Error)
 
+import Data.Coerce
+
 commonFlags :: [String]
 commonFlags = ["-c", "-v0", "--console=raw",
                -- "--checkcore",
@@ -94,6 +96,12 @@ runKoka cfg fp
        let argv = ["exec", "koka", "--"] ++ flags cfg ++ caseFlags ++ [relTest]
        testSanitize kokaDir <$> readProcess "stack" argv ""
 
+newtype NoQuotes = NoQuotes { toString :: String }
+  deriving (Eq)
+
+instance Show NoQuotes where
+  show = toString
+
 makeTest :: Mode -> Cfg -> FilePath -> Spec
 makeTest mode cfg fp
   | takeExtension fp == ".kk"
@@ -105,7 +113,7 @@ makeTest mode cfg fp
                out <- runKoka cfg fp
                unless (mode == Test) $ (withBinaryFile expectedFile WriteMode (\h -> hPutStr h out)) -- writeFile expectedFile out
                expected <- expectedSanitize <$> readFile expectedFile
-               out `shouldBe` expected
+               (NoQuotes out) `shouldBe` (NoQuotes expected)
   | otherwise
       = return ()
 
