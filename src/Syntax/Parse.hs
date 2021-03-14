@@ -1166,12 +1166,14 @@ funDef
 funDef' :: LexParser ([TypeBinder UserKind],[UserPattern], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
 funDef'
   = do tpars  <- typeparams
-       (pars,rng) <- parameters True
+      --  b <- branch
+       let rng = undefined
+       pat <- pattern
        resultTp <- annotRes
        preds <- do keyword "with"
                    parens (many1 predicate)
                 <|> return []
-       return (tpars,undefined,rng,resultTp,preds,id)
+       return (tpars,[pat],rng,resultTp,preds,id)
 
 
 annotRes :: LexParser (Maybe (Maybe UserType,UserType))
@@ -1433,22 +1435,22 @@ lambda alts
   = trace "lambda" $ 
     do rng <- keywordOr "fn" alts
        spars <- squantifier
-       (tpars,[pat],parsRng,mbtres,preds,ann) <- funDef'
+       (tpars,[pattern],parsRng,mbtres,preds,ann) <- funDef'
+       traceShowM pattern
        body <- block
        let _ = body :: UserExpr
        let _ = tpars :: [TypeBinder UserKind]
 
        let ty = Nothing :: Maybe UserType
-       let expr = undefined
        let nameRange = undefined
        let range = undefined
        let name = newName "myName"
-       let ee = Case (Var name False undefined) [Branch pat [Guard guardTrue body]] range
+       let ee = Case (Var name False nameRange) [Branch pattern [Guard guardTrue body]] range
        -- need to change body as well
        let fun = promote spars tpars preds mbtres
                   -- (Lam  body (combineRanged rng body))
                   -- nothing assuming no default arg
-                  (Lam  [ValueBinder (newName "myName") ty Nothing nameRange range] body (combineRanged rng body))
+                  (Lam  [ValueBinder name ty Nothing nameRange range] ee (combineRanged rng ee))
        return (ann fun)
 
 ifexpr
