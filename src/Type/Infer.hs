@@ -13,7 +13,7 @@
 
 module Type.Infer (inferTypes, coreVarInfoFromNameInfo ) where
 
-import qualified Lib.Trace
+import Lib.Trace hiding (traceDoc)
 import Data.List(partition,sortBy,sortOn)
 import qualified Data.List(find)
 import Data.Ord(comparing)
@@ -71,10 +71,6 @@ import Core.BindingGroups( regroup )
 import Core.Simplify( uniqueSimplify )
 
 import qualified Syntax.RangeMap as RM
-
-trace s x =
-  Lib.Trace.trace s
-    x
 
 traceDoc fdoc = do penv <- getPrettyEnv
                    trace (show (fdoc penv)) $ return ()
@@ -808,7 +804,9 @@ inferExpr propagated expect (Case expr branches rng)
       = case expandSyn tp of
           TApp (TCon _) _  -> True
           TCon _           -> True
+          TFun _ _ _       -> True
           -- TApp (TVar _) _  -> True
+          -- probably need this too
           -- TVar _           -> True
           _                -> False
 
