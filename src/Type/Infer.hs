@@ -804,7 +804,7 @@ inferExpr propagated expect (Case expr branches rng)
       = case expandSyn tp of
           TApp (TCon _) _  -> True
           TCon _           -> True
-          TFun _ _ _       -> True
+          -- TFun _ _ _       -> True
           -- TApp (TVar _) _  -> True
           -- probably need this too
           -- TVar _           -> True

@@ -1438,31 +1438,27 @@ lambda alts
        (tpars,pats,parsRng,mbtres,preds,ann) <- funDef'
        body <- block
 
-       let ty = Nothing :: Maybe UserType
        let nameRange = parsRng
        let names = [newName ("myName" ++ (show i)) | i <- [1..length pats]]
 
        case names of
          [name] -> do
-           let ee = Case (Var name False nameRange) [Branch (snd $ head pats) [Guard guardTrue body]] nameRange
-          --  traceShowM ee
-           let fun = promote spars tpars preds mbtres $
-                (Lam [ValueBinder name Nothing Nothing nameRange parsRng] ee (combineRanged rng ee))
-           pure $ ann fun
+           let (_, pat):_ = pats
+           let bodyWithCase = Case (Var name False nameRange) [Branch pat [Guard guardTrue body]] nameRange
+           pure $ ann $ promote spars tpars preds mbtres $
+                (Lam [ValueBinder name Nothing Nothing nameRange parsRng] bodyWithCase (combineRanged rng bodyWithCase))
+
          -- 0 params case is the same as > 1 param case
+         -- actually 0 case might be different since there isn't a 0-tuple
          names  -> do
            let combined = PatCon (nameTuple $ length pats) pats parsRng parsRng
-
-           -- need tuple constructor here
            let tup = Var (nameTuple (length names)) False nameRange {- combineRange something -}
            let applied = App tup [(Nothing, Var e False nameRange {- fix range -}) | e <- names] nameRange
-           let ee = Case applied [Branch combined [Guard guardTrue body]] parsRng
-           let fun = promote spars tpars preds mbtres
+           let bodyWithCase = Case applied [Branch combined [Guard guardTrue body]] parsRng
+           pure $ ann $ promote spars tpars preds mbtres
                        -- (Lam  body (combineRanged rng body))
                        -- nothing assuming no default arg
-                       (Lam [ValueBinder name Nothing Nothing nameRange parsRng | name <- names] ee (combineRanged rng ee))
-                       -- (Lam  [ValueBinder name ty Nothing nameRange parsRng] ee (combineRanged rng ee))
-           pure $ ann fun
+                       (Lam [ValueBinder name Nothing Nothing nameRange parsRng | name <- names] bodyWithCase (combineRanged rng bodyWithCase))
 
 ifexpr
   = do rng <- keyword "if"
