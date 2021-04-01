@@ -681,23 +681,23 @@ private fun xperform1( ev : ev<h>, op : (forall<e1,r> h<e1,r> -> clause1<a,b,h,e
 }
 
 public fun clause-control-raw3( op : (x1:a1, x2:a2, x3:a3, r: resume-context<b,e,r>) -> e r ) : clause1<(a1,a2,a3),b,h,e,r> {
-  clause-control-raw1( fn(x,r){ op(x.fst,x.snd,x.thd,r) } )
+  clause-control-raw1( fn(x:(_,_,_),r){ op(x.fst,x.snd,x.thd,r) } )
 }
 
 public fun clause-control3( op : (x1:a1, x2:a2, x3:a3, k: b -> e r) -> e r ) : clause1<(a1,a2,a3),b,h,e,r> {
-  clause-control1( fn(x,k){ op(x.fst,x.snd,x.thd,k) } )
+  clause-control1( fn(x:(_,_,_),k){ op(x.fst,x.snd,x.thd,k) } )
 }
 
 public fun clause-tail3(op : (a1,a2,a3) -> e b) : clause1<(a1,a2,a3),b,h,e,r> {
-  clause-tail1( fn( x ){ op(x.fst,x.snd,x.thd) } )
+  clause-tail1( fn( x:(_,_,_) ){ op(x.fst,x.snd,x.thd) } )
 }
 
 public fun clause-tail-noyield3(op : (a1,a2,a3) -> e b) : clause1<(a1,a2,a3),b,h,e,r> {
-  clause-tail-noyield1( fn( x ){ op(x.fst,x.snd,x.thd) } )
+  clause-tail-noyield1( fn( x:(_,_,_) ){ op(x.fst,x.snd,x.thd) } )
 }
 
 public fun clause-never3( op : (a1,a2,a3) -> e r ) : clause1<(a1,a2,a3),b,h,e,r> {
-  clause-never1(fn(x){ op(x.fst,x.snd,x.thd) } )
+  clause-never1(fn(x:(_,_,_)){ op(x.fst,x.snd,x.thd) } )
 }
 
 public fun ".perform3"( ev : ev<h>, op : (forall<e1,r> h<e1,r> -> clause1<(a1,a2,a3),b,h,e1,r>), x1 : a1, x2 : a2, x3 : a3 ) : e b {
@@ -715,11 +715,11 @@ private fun under3( ev : ev<h>, op : (a1,a2,a3) -> e b, x1 : a1, x2 : a2, x3 : a
 
 
 public fun clause-control4( op : (x1:a1, x2:a2, x3:a3, x4:a4, k: b -> e r) -> e r ) : clause1<(a1,a2,a3,a4),b,h,e,r> {
-  clause-control1( fn(x,k){ op(x.fst,x.snd,x.thd,x.field4,k) } )
+  clause-control1( fn(x:(_,_,_,_),k){ op(x.fst,x.snd,x.thd,x.field4,k) } )
 }
 
 public fun clause-tail4(op : (a1,a2,a3,a4) -> e b) : clause1<(a1,a2,a3,a4),b,h,e,r> {
-  clause-tail1( fn( x ){ op(x.fst,x.snd,x.thd,x.field4) } )
+  clause-tail1( fn( x:(_,_,_,_) ){ op(x.fst,x.snd,x.thd,x.field4) } )
 }
 
 public fun ".perform4"( ev : ev<h>, op : (forall<e1,r> h<e1,r> -> clause1<(a1,a2,a3,a4),b,h,e1,r>), x1 : a1, x2 : a2, x3 : a3, x4 : a4 ) : e b {

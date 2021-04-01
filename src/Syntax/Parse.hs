@@ -38,9 +38,11 @@ import Lib.PPrint hiding (string,parens,integer,semiBraces,lparen,comma,angles,r
 import qualified Lib.PPrint as PP (string)
 
 import Control.Monad (mzero)
+import Data.Monoid (Endo(..), Dual(..))
 import Text.Parsec hiding (space,tab,lower,upper,alphaNum,sourceName,optional)
 import Text.Parsec.Error
 import Text.Parsec.Pos           (newPos)
+
 
 import Common.Name
 import Common.NamePrim
@@ -59,6 +61,7 @@ import Syntax.Layout  ( layout )
 import Syntax.Promote ( promote, promoteType, quantify, promoteFree )
 
 import Core.Pretty
+import GHC.Stack
 
 -----------------------------------------------------------
 -- Parser on token stream
@@ -84,7 +87,7 @@ optional p  = do { p; return True } <|> return False
 parseProgramFromFile :: Bool -> FilePath -> IO (Error UserProgram)
 parseProgramFromFile semiInsert fname
   = do input <- readInput fname
-       traceShowM fname
+      --  traceShowM fname
       --  return $ (\e -> traceShow (programDefs $ unchecked e) e) $ lexParse semiInsert id program fname 1 input
        return $ lexParse semiInsert id program fname 1 input
 
@@ -333,11 +336,13 @@ externDecl dvis
                          return (pars,args,tp,\body -> Ann body tp (getRange tp))
                       <|>
                       do tpars <- typeparams
-                         (pars,parRng) <- parameters (inline /= InlineAlways) {- allow defaults? -}
+                         (pars_transforms, parRng) <- parameters (inline /= InlineAlways) {- allow defaults? -}
+                         let (pars, transforms) = unzip pars_transforms
+                         let transform = appEndo $ getDual $ foldMap (Dual . Endo) transforms
                          (teff,tres)   <- annotResult
                          let tp = typeFromPars nameRng pars teff tres
                          genParArgs tp -- checks the type
-                         return (pars,genArgs pars,tp,\body -> promote [] tpars [] (Just (Just teff, tres)) body)
+                         return (pars,genArgs pars,tp,\body -> promote [] tpars [] (Just (Just teff, tres)) (transform body))
                  (exprs,rng) <- externalBody
                  if (inline == InlineAlways)
                   then return [DefExtern (External name tp nameRng (combineRanges [krng,rng]) exprs vis doc)]
@@ -1148,6 +1153,7 @@ funDecl rng doc vis inline
   = do spars <- squantifier
        -- tpars <- aquantifier  -- todo: store somewhere
        (name,nameRng) <- funid
+      --  traceM $ "Fundecl: " ++ show name
        (tpars,pars,parsRng,mbtres,preds,ann) <- funDef
        body   <- bodyexpr
        let fun = promote spars tpars preds mbtres
@@ -1158,23 +1164,25 @@ funDecl rng doc vis inline
 funDef :: LexParser ([TypeBinder UserKind],[ValueBinder (Maybe UserType) (Maybe UserExpr)], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
 funDef
   = do tpars  <- typeparams
-       (pars,rng) <- parameters True
+       (pars_transforms,rng) <- parameters True
+       let (pars, transforms) = unzip pars_transforms
+       let transform = appEndo $ getDual $ foldMap (Dual . Endo) transforms
        resultTp <- annotRes
        preds <- do keyword "with"
                    parens (many1 predicate)
                 <|> return []
-       return (tpars,pars,rng,resultTp,preds,id)
+       return (tpars,pars,rng,resultTp,preds,transform)
 
-funDef' :: LexParser ([TypeBinder UserKind],[(Maybe (Name, Range), UserPattern)], Range, Maybe (Maybe UserType, UserType),[UserType], UserExpr -> UserExpr)
-funDef'
-  = do tpars  <- typeparams
-       (patterns, rng) <- parensCommasRng namedPattern
-       resultTp <- annotRes
-       preds <- do keyword "with"
-                   parens (many1 predicate)
-                <|> return []
-       return (tpars,patterns,rng,resultTp,preds,id)
-
+-- funDef' :: LexParser ([TypeBinder UserKind], [Either (ValueBinder (Maybe UserType) (Maybe UserExpr)) (Maybe (Name, Range), UserPattern)], Range, Maybe (Maybe UserType, UserType), [KUserType UserKind], UserExpr -> UserExpr)
+-- funDef' = do 
+--   tpars  <- typeparams
+--   -- TODO new datatype for parameter?
+--   (patterns, rng) <- parensCommasRng (parameter True)
+--   resultTp <- annotRes
+--   preds <- do keyword "with"
+--               parens (many1 predicate)
+--            <|> return []
+--   return (tpars,patterns,rng,resultTp,preds,id)
 
 annotRes :: LexParser (Maybe (Maybe UserType,UserType))
 annotRes
@@ -1194,17 +1202,41 @@ typeparams
   <|>
     do return []
 
-
-parameters :: Bool -> LexParser ([ValueBinder (Maybe UserType) (Maybe UserExpr)],Range)
+parameters :: Bool -> LexParser ([(ValueBinder (Maybe UserType) (Maybe UserExpr), UserExpr -> UserExpr)],Range)
 parameters allowDefaults
   = parensCommasRng (parameter allowDefaults)
 
-parameter :: Bool -> LexParser (ValueBinder (Maybe UserType) (Maybe UserExpr))
-parameter allowDefaults
-  = do (name,rng) <- paramid
-       tp         <- optionMaybe typeAnnotPar
-       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
-       return (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]))
+parameter :: Bool -> LexParser (ValueBinder (Maybe UserType) (Maybe UserExpr), UserExpr -> UserExpr)
+parameter allowDefaults = do
+  pat <- pattern
+  case pat of
+    PatVar binder -> do
+      let name = binderName binder
+      let rng = binderRange binder
+      let tp = binderType binder
+      -- tp         <- optionMaybe typeAnnotPar
+      (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
+      pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
+    PatWild rng -> do
+      -- TODO name
+      let name = newName "_asdf"
+      tp         <- optionMaybe typeAnnotPar
+      (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
+      pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
+    pat -> do
+      -- need a new name each time or this will be duplicate
+      traceShowM pat
+      tp <- optionMaybe typeAnnotPar
+      (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
+      let rng = rangeNull
+      let name = newName "newName1"
+      let transform body = Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng
+      pure $ (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), transform)
+
+  -- (name,rng) <- paramid
+  -- tp         <- optionMaybe typeAnnotPar
+  -- (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
+  -- pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
 
 paramid = identifier <|> wildcard
 
@@ -1352,11 +1384,9 @@ localUsingDecl
 withstat :: LexParser (UserExpr -> UserExpr)
 withstat
   = do krng <- keyword "with"
-       (do par  <- try $ do p <- parameter False
-                            keyword "="
-                            return p
-           e   <- basicexpr <|> handlerExprStat krng HandlerInstance
-           return (applyToContinuation krng [promoteValueBinder par] e)
+       (do (par, transform) <- try $ parameter False <* keyword "="
+           e <- basicexpr <|> handlerExprStat krng HandlerInstance
+           pure $ applyToContinuation krng [promoteValueBinder par] $ transform e
         <|>
         do e <- basicexpr <|> handlerExprStat krng HandlerNormal
            return (applyToContinuation krng [] e)
@@ -1430,35 +1460,55 @@ funblock
   = do exp <- block
        return (Lam [] exp (getRange exp))
 
--- here?
+-- lambda alts = do
+--   rng <- keywordOr "fn" alts
+--   spaws <- squantifier
+--   (tparams, params, paramsRng, mbtres, preds, ann) <- funDef
+--   undefined
+
 lambda alts
-  = trace "lambda" $ 
-    do rng <- keywordOr "fn" alts
+  = do rng <- keywordOr "fn" alts
        spars <- squantifier
-       (tpars,pats,parsRng,mbtres,preds,ann) <- funDef'
+       (tpars,pars,parsRng,mbtres,preds,ann) <- funDef
        body <- block
+       let fun = promote spars tpars preds mbtres
+                  (Lam pars body (combineRanged rng body))
+       return (ann fun)  
 
-       let nameRange = parsRng
-       let names = [newName ("myName" ++ (show i)) | i <- [1..length pats]]
+-- here?
+-- lambda alts = trace "lambda" $ do
+--   rng <- keywordOr "fn" alts
+--   spars <- squantifier
+--   (tpars,pats,parsRng,mbtres,preds,ann) <- funDef'
+--   body <- block
 
-       case names of
-         [name] -> do
-           let (_, pat):_ = pats
-           let bodyWithCase = Case (Var name False nameRange) [Branch pat [Guard guardTrue body]] nameRange
-           pure $ ann $ promote spars tpars preds mbtres $
-                (Lam [ValueBinder name Nothing Nothing nameRange parsRng] bodyWithCase (combineRanged rng bodyWithCase))
+--   let nameRange = parsRng
+--   let names = [newName ("myName" ++ (show i)) | i <- [1..length pats]]
 
-         -- 0 params case is the same as > 1 param case
-         -- actually 0 case might be different since there isn't a 0-tuple
-         names  -> do
-           let combined = PatCon (nameTuple $ length pats) pats parsRng parsRng
-           let tup = Var (nameTuple (length names)) False nameRange {- combineRange something -}
-           let applied = App tup [(Nothing, Var e False nameRange {- fix range -}) | e <- names] nameRange
-           let bodyWithCase = Case applied [Branch combined [Guard guardTrue body]] parsRng
-           pure $ ann $ promote spars tpars preds mbtres
-                       -- (Lam  body (combineRanged rng body))
-                       -- nothing assuming no default arg
-                       (Lam [ValueBinder name Nothing Nothing nameRange parsRng | name <- names] bodyWithCase (combineRanged rng bodyWithCase))
+--   let (binders, patterns) = partitionEithers pats
+
+--   let h (Left binder) = undefined
+--   let h (Right pattern) = undefined
+--   let allBinders = fmap h pats
+
+--   case names of
+--     [name] -> do
+--       let (_, pat):_ = pats
+--       let bodyWithCase = Case (Var name False nameRange) [Branch pat [Guard guardTrue body]] nameRange
+--       pure $ ann $ promote spars tpars preds mbtres $
+--            (Lam [ValueBinder name Nothing Nothing nameRange parsRng] bodyWithCase (combineRanged rng bodyWithCase))
+
+--     -- 0 params case is the same as > 1 param case
+--     -- actually 0 case might be different since there isn't a 0-tuple
+--     names  -> do
+--       let combined = PatCon (nameTuple $ length pats) pats parsRng parsRng
+--       let tup = Var (nameTuple (length names)) False nameRange {- combineRange something -}
+--       let applied = App tup [(Nothing, Var e False nameRange {- fix range -}) | e <- names] nameRange
+--       let bodyWithCase = Case applied [Branch combined [Guard guardTrue body]] parsRng
+--       pure $ ann $ promote spars tpars preds mbtres
+--                   -- (Lam  body (combineRanged rng body))
+--                   -- nothing assuming no default arg
+--                   (Lam [ValueBinder name Nothing Nothing nameRange parsRng | name <- names] bodyWithCase (combineRanged rng bodyWithCase))
 
 ifexpr
   = do rng <- keyword "if"
@@ -2612,7 +2662,6 @@ wildcard
         else return (id,rng)
   <?> "wildcard"
 
-
 integer :: LexParser (Integer,Range)
 integer
   = do (Lexeme rng (LexInt i _)) <- parseLex (LexInt 0 "0")
@@ -2715,8 +2764,7 @@ warnDeprecated dep new
        pwarning $ "warning " ++ show pos ++ ": keyword \"" ++ dep ++ "\" is deprecated. Consider using \"" ++ new ++ "\" instead."
 
 pwarning :: String -> LexParser ()
-pwarning msg
-    = trace msg (return ())   -- hmm, hacky trace...
+pwarning msg = traceM msg
 
 
 
