@@ -38,7 +38,7 @@ import Lib.PPrint hiding (string,parens,integer,semiBraces,lparen,comma,angles,r
 import qualified Lib.PPrint as PP (string)
 
 import Control.Monad (mzero)
-import Data.Monoid (Endo(..), Dual(..))
+import Data.Monoid (Endo(..))
 import Text.Parsec hiding (space,tab,lower,upper,alphaNum,sourceName,optional)
 import Text.Parsec.Error
 import Text.Parsec.Pos           (newPos)
@@ -338,7 +338,7 @@ externDecl dvis
                       do tpars <- typeparams
                          (pars_transforms, parRng) <- parameters (inline /= InlineAlways) {- allow defaults? -}
                          let (pars, transforms) = unzip pars_transforms
-                         let transform = appEndo $ getDual $ foldMap (Dual . Endo) transforms
+                         let transform = appEndo $ foldMap Endo transforms
                          (teff,tres)   <- annotResult
                          let tp = typeFromPars nameRng pars teff tres
                          genParArgs tp -- checks the type
@@ -1166,7 +1166,7 @@ funDef
   = do tpars  <- typeparams
        (pars_transforms,rng) <- parameters True
        let (pars, transforms) = unzip pars_transforms
-       let transform = appEndo $ getDual $ foldMap (Dual . Endo) transforms
+       let transform = appEndo $ foldMap Endo transforms
        resultTp <- annotRes
        preds <- do keyword "with"
                    parens (many1 predicate)
