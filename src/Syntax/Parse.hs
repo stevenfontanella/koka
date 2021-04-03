@@ -37,7 +37,7 @@ import Data.Either (partitionEithers)
 import Lib.PPrint hiding (string,parens,integer,semiBraces,lparen,comma,angles,rparen,rangle,langle)
 import qualified Lib.PPrint as PP (string)
 
-import Control.Monad (mzero)
+import Control.Monad (mzero, when)
 import Data.Monoid (Endo(..))
 import Text.Parsec hiding (space,tab,lower,upper,alphaNum,sourceName,optional)
 import Text.Parsec.Error
@@ -89,7 +89,7 @@ parseProgramFromFile semiInsert fname
   = do input <- readInput fname
       --  traceShowM fname
       --  return $ (\e -> traceShow (programDefs $ unchecked e) e) $ lexParse semiInsert id program fname 1 input
-       return $ lexParse semiInsert id program fname 1 input
+       return $ traceShowId <$> lexParse semiInsert id program fname 1 input
 
 
 parseValueDef :: Bool -> FilePath -> Int -> String -> Error UserDef
@@ -1153,7 +1153,6 @@ funDecl rng doc vis inline
   = do spars <- squantifier
        -- tpars <- aquantifier  -- todo: store somewhere
        (name,nameRng) <- funid
-      --  traceM $ "Fundecl: " ++ show name
        (tpars,pars,parsRng,mbtres,preds,ann) <- funDef
        body   <- bodyexpr
        let fun = promote spars tpars preds mbtres
@@ -1209,6 +1208,7 @@ parameters allowDefaults
 parameter :: Bool -> LexParser (ValueBinder (Maybe UserType) (Maybe UserExpr), UserExpr -> UserExpr)
 parameter allowDefaults = do
   pat <- pattern
+  traceShowM pat
   case pat of
     PatVar binder -> do
       let name = binderName binder
@@ -1219,24 +1219,51 @@ parameter allowDefaults = do
       pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
     PatWild rng -> do
       -- TODO name
-      let name = newName "_asdf"
+      let name = newName "f"
       tp         <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
+    PatAnn pat tp rng -> do
+      (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
+      let name = newName "newName1"
+      let transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
+          transform (Ann body tp rng) = Ann (transform body) tp rng
+      pure (ValueBinder name (Just tp) opt rng (combineRanges [rng,getRange tp,drng]), transform)
     pat -> do
       -- need a new name each time or this will be duplicate
-      traceShowM pat
+      -- traceShowM pat
       tp <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       let rng = rangeNull
       let name = newName "newName1"
-      let transform body = Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng
+      let transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
+          transform (Ann body tp rng) = Ann (transform body) tp rng
       pure $ (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), transform)
 
   -- (name,rng) <- paramid
   -- tp         <- optionMaybe typeAnnotPar
   -- (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
   -- pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
+
+-- param2 :: UserPattern -> Maybe UserType -> Maybe UserExpr -> Range -> (UserPattern, Maybe UserType)
+-- param2 pat tp opt drng = case pat of
+--   PatVar (ValueBinder name tp _ _ rng) -> (pat, tp)
+--   PatWild rng -> (ValueBinder (newName "_wild") tp opt rng (combineRanges [rng,getRange tp,drng]), id)
+--   PatAnn pat tp rng -> param2 pat (Just tp) opt drng
+--   pat -> (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), transform)
+--       where transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
+--             transform (Ann body tp rng) = Ann (transform body) tp rng
+--             rng = rangeNull
+--             name = newName "newName1"
+
+param2 :: UserPattern -> (UserPattern, Maybe UserType)
+param2 pat = case pat of
+  PatVar (ValueBinder name tp _ _ rng) -> (pat, tp)
+  PatWild rng -> (pat, Nothing)
+  -- todo: handle nested PatAnns?
+  PatAnn pat tp rng -> (pat, Just tp)
+  pat -> (pat, Nothing)
+
 
 paramid = identifier <|> wildcard
 
@@ -2009,7 +2036,8 @@ patAtom
        tp <- optionMaybe typeAnnot
        return (PatVar (ValueBinder name tp (PatWild rng) rng (combineRanged rng tp)))  -- could still be singleton constructor
   <|>
-    do (_,range) <- wildcard
+    do (name,range) <- wildcard
+       traceShowM name
        return (PatWild range)
   <|>
     do lit <- literal
