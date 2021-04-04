@@ -54,6 +54,8 @@ executables:
     other-extensions:
       - CPP
       - OverloadedStrings
+    default-extensions:
+      - StandaloneDeriving
     source-dirs:
       - src
       - src/Platform/cpp

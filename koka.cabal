@@ -125,6 +125,7 @@ executable koka
   hs-source-dirs:
       src
       src/Platform/cpp
+  default-extensions: StandaloneDeriving
   other-extensions: CPP OverloadedStrings
   ghc-options: -rtsopts
   cpp-options: -DMAIN="koka" -DVARIANT="release" -DVERSION="2.1.2"
