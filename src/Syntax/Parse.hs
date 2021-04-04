@@ -37,7 +37,7 @@ import Data.Either (partitionEithers)
 import Lib.PPrint hiding (string,parens,integer,semiBraces,lparen,comma,angles,rparen,rangle,langle)
 import qualified Lib.PPrint as PP (string)
 
-import Control.Monad (mzero, when)
+import Control.Monad (mzero)
 import Data.Monoid (Endo(..))
 import Text.Parsec hiding (space,tab,lower,upper,alphaNum,sourceName,optional)
 import Text.Parsec.Error
@@ -59,9 +59,6 @@ import Syntax.Lexeme
 import Syntax.Lexer   ( lexing )
 import Syntax.Layout  ( layout )
 import Syntax.Promote ( promote, promoteType, quantify, promoteFree )
-
-import Core.Pretty
-import GHC.Stack
 
 -----------------------------------------------------------
 -- Parser on token stream
@@ -87,8 +84,6 @@ optional p  = do { p; return True } <|> return False
 parseProgramFromFile :: Bool -> FilePath -> IO (Error UserProgram)
 parseProgramFromFile semiInsert fname
   = do input <- readInput fname
-      --  traceShowM fname
-      --  return $ (\e -> traceShow (programDefs $ unchecked e) e) $ lexParse semiInsert id program fname 1 input
        return $ lexParse semiInsert id program fname 1 input
 
 
@@ -1454,12 +1449,6 @@ funblock
   = do exp <- block
        return (Lam [] exp (getRange exp))
 
--- lambda alts = do
---   rng <- keywordOr "fn" alts
---   spaws <- squantifier
---   (tparams, params, paramsRng, mbtres, preds, ann) <- funDef
---   undefined
-
 lambda alts
   = do rng <- keywordOr "fn" alts
        spars <- squantifier
@@ -1468,41 +1457,6 @@ lambda alts
        let fun = promote spars tpars preds mbtres
                   (Lam pars body (combineRanged rng body))
        return (ann fun)  
-
--- here?
--- lambda alts = trace "lambda" $ do
---   rng <- keywordOr "fn" alts
---   spars <- squantifier
---   (tpars,pats,parsRng,mbtres,preds,ann) <- funDef'
---   body <- block
-
---   let nameRange = parsRng
---   let names = [newName ("myName" ++ (show i)) | i <- [1..length pats]]
-
---   let (binders, patterns) = partitionEithers pats
-
---   let h (Left binder) = undefined
---   let h (Right pattern) = undefined
---   let allBinders = fmap h pats
-
---   case names of
---     [name] -> do
---       let (_, pat):_ = pats
---       let bodyWithCase = Case (Var name False nameRange) [Branch pat [Guard guardTrue body]] nameRange
---       pure $ ann $ promote spars tpars preds mbtres $
---            (Lam [ValueBinder name Nothing Nothing nameRange parsRng] bodyWithCase (combineRanged rng bodyWithCase))
-
---     -- 0 params case is the same as > 1 param case
---     -- actually 0 case might be different since there isn't a 0-tuple
---     names  -> do
---       let combined = PatCon (nameTuple $ length pats) pats parsRng parsRng
---       let tup = Var (nameTuple (length names)) False nameRange {- combineRange something -}
---       let applied = App tup [(Nothing, Var e False nameRange {- fix range -}) | e <- names] nameRange
---       let bodyWithCase = Case applied [Branch combined [Guard guardTrue body]] parsRng
---       pure $ ann $ promote spars tpars preds mbtres
---                   -- (Lam  body (combineRanged rng body))
---                   -- nothing assuming no default arg
---                   (Lam [ValueBinder name Nothing Nothing nameRange parsRng | name <- names] bodyWithCase (combineRanged rng bodyWithCase))
 
 ifexpr
   = do rng <- keyword "if"
@@ -2004,7 +1958,6 @@ patAtom
        return (PatVar (ValueBinder name tp (PatWild rng) rng (combineRanged rng tp)))  -- could still be singleton constructor
   <|>
     do (name,range) <- wildcard
-      --  traceShowM name
        return (PatWild range)
   <|>
     do lit <- literal

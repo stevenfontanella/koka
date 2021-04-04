@@ -23,19 +23,16 @@ traceShowM :: (Applicative m, Show s) => s -> m ()
 traceShowM msg = ctrace DarkGray (show msg) $ pure ()
 
 traceM :: (Applicative m) => String -> m ()
-traceM msg = ctrace DarkGray msg $ pure ()
+traceM msg = trace msg (pure ())
 
 traceShow :: (Show s) => s -> a -> a
-traceShow s a
-  = ctrace DarkGray (show s) a
+traceShow s = trace $ show s
 
 traceShowId :: (Show a) => a -> a
-traceShowId x
-  = ctrace DarkGray (show x) x
+traceShowId s = trace (show s) s
 
 traceDoc :: Doc -> a -> a
-traceDoc msg x
-  = ctrace DarkGray (show msg) x
+traceDoc msg x = trace (show msg) x
   
 ctrace :: Color -> String -> a -> a
 ctrace clr msg x
