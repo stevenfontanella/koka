@@ -67,7 +67,7 @@ import GHC.Stack
 -- Parser on token stream
 -----------------------------------------------------------
 
-type LexParser a  = Parsec [Lexeme] () a -- GenParser Lexeme () a
+type LexParser a  = Parsec [Lexeme] [Int] a -- GenParser Lexeme () a
 
 parseLex :: Lex -> LexParser Lexeme
 parseLex lex
@@ -118,13 +118,13 @@ lexParse semiInsert preprocess p sourceName line rawinput
         xs = lexing source line input
         lexemes = preprocess $ layout semiInsert xs
     in  -- trace  (unlines (map show lexemes)) $
-        case (parse (p source) sourceName lexemes) of
+        case (runParser (p source) [0..] sourceName lexemes) of
           Left err -> makeParseError (errorRangeLexeme xs source) err
           Right x  -> return x
 
 parseLexemes :: LexParser a -> Source -> [Lexeme] -> Error a
 parseLexemes p source@(Source sourceName _) lexemes
-  = case (parse p sourceName lexemes) of
+  = case (runParser p [0..] sourceName lexemes) of
       Left err -> makeParseError (errorRangeLexeme lexemes source) err
       Right x  -> return x
 
@@ -399,7 +399,6 @@ externalImport rng1
                       Just(nm,_) -> nm
                       Nothing    -> newName s
            return (target,(id,s))
-
 
 externalInclude :: Range -> LexParser External
 externalInclude rng1
@@ -1172,17 +1171,6 @@ funDef
                 <|> return []
        return (tpars,pars,rng,resultTp,preds,transform)
 
--- funDef' :: LexParser ([TypeBinder UserKind], [Either (ValueBinder (Maybe UserType) (Maybe UserExpr)) (Maybe (Name, Range), UserPattern)], Range, Maybe (Maybe UserType, UserType), [KUserType UserKind], UserExpr -> UserExpr)
--- funDef' = do 
---   tpars  <- typeparams
---   -- TODO new datatype for parameter?
---   (patterns, rng) <- parensCommasRng (parameter True)
---   resultTp <- annotRes
---   preds <- do keyword "with"
---               parens (many1 predicate)
---            <|> return []
---   return (tpars,patterns,rng,resultTp,preds,id)
-
 annotRes :: LexParser (Maybe (Maybe UserType,UserType))
 annotRes
   = do (teff,tres) <- annotResult
@@ -1205,68 +1193,44 @@ parameters :: Bool -> LexParser ([(ValueBinder (Maybe UserType) (Maybe UserExpr)
 parameters allowDefaults
   = parensCommasRng (parameter allowDefaults)
 
+makeName :: String -> LexParser Name
+makeName prefix = do
+  ~(x:xs) <- getState
+  putState xs
+  pure $ newName (prefix ++ "#" ++ show x)
+
 parameter :: Bool -> LexParser (ValueBinder (Maybe UserType) (Maybe UserExpr), UserExpr -> UserExpr)
 parameter allowDefaults = do
-  (pat, tp) <- param2 <$> pattern
+  (pat, tp) <- unwrapPattern <$> pattern
   tp <- case tp of 
     Nothing -> optionMaybe typeAnnotPar
     Just tp -> pure $ Just tp
-  -- traceShowM pat
   case pat of
     PatVar binder -> do
       let name = binderName binder
       let rng = binderRange binder
-      -- let tp = binderType binder
-      -- tp         <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
     PatWild rng -> do
-      -- TODO name
-      let name = newName "_f"
-      -- tp         <- optionMaybe typeAnnotPar
+      -- todo: does this name matter?
+      let name = newName "_"
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
-    -- PatAnn pat tp rng -> do
-    --   (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
-    --   let name = newName "newName1"
-    --   let transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
-    --       transform (Ann body tp rng) = Ann (transform body) tp rng
-    --   pure (ValueBinder name (Just tp) opt rng (combineRanges [rng,getRange tp,drng]), transform)
     pat -> do
-      -- need a new name each time or this will be duplicate
-      -- traceShowM pat
-      -- tp <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       let rng = rangeNull
-      let name = newName "newName1"
+      name <- makeName "patternMatchFreshName"
       let transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
           transform (Ann body tp rng) = Ann (transform body) tp rng
       pure $ (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), transform)
 
-  -- (name,rng) <- paramid
-  -- tp         <- optionMaybe typeAnnotPar
-  -- (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
-  -- pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
-
--- param2 :: UserPattern -> Maybe UserType -> Maybe UserExpr -> Range -> (UserPattern, Maybe UserType)
--- param2 pat tp opt drng = case pat of
---   PatVar (ValueBinder name tp _ _ rng) -> (pat, tp)
---   PatWild rng -> (ValueBinder (newName "_wild") tp opt rng (combineRanges [rng,getRange tp,drng]), id)
---   PatAnn pat tp rng -> param2 pat (Just tp) opt drng
---   pat -> (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), transform)
---       where transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
---             transform (Ann body tp rng) = Ann (transform body) tp rng
---             rng = rangeNull
---             name = newName "newName1"
-
-param2 :: UserPattern -> (UserPattern, Maybe UserType)
-param2 pat = case pat of
+unwrapPattern :: UserPattern -> (UserPattern, Maybe UserType)
+unwrapPattern pat = case pat of
   PatVar (ValueBinder name tp _ _ rng) -> (pat, tp)
   PatWild rng -> (pat, Nothing)
   -- todo: handle nested PatAnns?
   PatAnn pat tp rng -> (pat, Just tp)
   pat -> (pat, Nothing)
-
 
 paramid = identifier <|> wildcard
 
