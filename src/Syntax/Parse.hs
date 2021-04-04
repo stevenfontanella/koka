@@ -89,7 +89,7 @@ parseProgramFromFile semiInsert fname
   = do input <- readInput fname
       --  traceShowM fname
       --  return $ (\e -> traceShow (programDefs $ unchecked e) e) $ lexParse semiInsert id program fname 1 input
-       return $ traceShowId <$> lexParse semiInsert id program fname 1 input
+       return $ lexParse semiInsert id program fname 1 input
 
 
 parseValueDef :: Bool -> FilePath -> Int -> String -> Error UserDef
@@ -1207,32 +1207,35 @@ parameters allowDefaults
 
 parameter :: Bool -> LexParser (ValueBinder (Maybe UserType) (Maybe UserExpr), UserExpr -> UserExpr)
 parameter allowDefaults = do
-  pat <- pattern
-  traceShowM pat
+  (pat, tp) <- param2 <$> pattern
+  tp <- case tp of 
+    Nothing -> optionMaybe typeAnnotPar
+    Just tp -> pure $ Just tp
+  -- traceShowM pat
   case pat of
     PatVar binder -> do
       let name = binderName binder
       let rng = binderRange binder
-      let tp = binderType binder
+      -- let tp = binderType binder
       -- tp         <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
     PatWild rng -> do
       -- TODO name
-      let name = newName "f"
-      tp         <- optionMaybe typeAnnotPar
+      let name = newName "_f"
+      -- tp         <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       pure (ValueBinder name tp opt rng (combineRanges [rng,getRange tp,drng]), id)
-    PatAnn pat tp rng -> do
-      (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
-      let name = newName "newName1"
-      let transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
-          transform (Ann body tp rng) = Ann (transform body) tp rng
-      pure (ValueBinder name (Just tp) opt rng (combineRanges [rng,getRange tp,drng]), transform)
+    -- PatAnn pat tp rng -> do
+    --   (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
+    --   let name = newName "newName1"
+    --   let transform (Lam binders body rng) = Lam binders (Case (Var name False rng) [Branch pat [Guard guardTrue body]] rng) rng
+    --       transform (Ann body tp rng) = Ann (transform body) tp rng
+    --   pure (ValueBinder name (Just tp) opt rng (combineRanges [rng,getRange tp,drng]), transform)
     pat -> do
       -- need a new name each time or this will be duplicate
       -- traceShowM pat
-      tp <- optionMaybe typeAnnotPar
+      -- tp <- optionMaybe typeAnnotPar
       (opt,drng) <- if allowDefaults then defaultExpr else return (Nothing,rangeNull)
       let rng = rangeNull
       let name = newName "newName1"
@@ -2037,7 +2040,7 @@ patAtom
        return (PatVar (ValueBinder name tp (PatWild rng) rng (combineRanged rng tp)))  -- could still be singleton constructor
   <|>
     do (name,range) <- wildcard
-       traceShowM name
+      --  traceShowM name
        return (PatWild range)
   <|>
     do lit <- literal
