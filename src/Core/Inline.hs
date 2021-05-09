@@ -11,7 +11,9 @@
 -----------------------------------------------------------------------------
 
 module Core.Inline( inlineDefs
-                   ) where
+                  , Inl(..)
+                  , runInl
+                  ) where
 
 
 import qualified Lib.Trace

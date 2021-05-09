@@ -1,3 +1,5 @@
+{-# LANGUAGE StandaloneDeriving, DerivingStrategies, DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- Copyright 2012 Microsoft Corporation.
 --
@@ -80,9 +82,13 @@ module Core.Core ( -- Data structures
                    , infoArity, infoTypeArity
 
                    , Deps, dependencies
+
+                   , foldMapExpr
+                   , showExpr
                    ) where
 
 import Data.Char( isDigit )
+import Data.Monoid (Endo(..))
 import qualified Data.Set as S
 import Data.Maybe
 import Lib.PPrint
@@ -443,6 +449,48 @@ data Expr =
   | Case{ caseExprs :: [Expr], caseBranches :: [Branch] }
 
 data TName = TName Name Type
+
+showExprN :: Int -> Expr -> String
+showExprN n e = case e of
+  (Lam _ _ body) -> tabs <> "Lam" <> "\n" <> showExprN (n+1) body <> "\n"
+  (Var name _) -> tabs <> "Var " <> show name
+  (App f xs) -> tabs <> "App " <> "\n" <> showExprN (n+1) f <> "\n" <> mconcat (showExprN (n+1) <$> xs)
+  (TypeLam vars body) -> tabs <> "TypeLam " <> "\n" <> mconcat [replicate (n+1) '\t' <> show var | var <- vars] <> "\n" <> showExprN (n+1) body
+  (TypeApp _ _) -> "TypeApp"
+  (Con name _) -> tabs <> "Con " <> show name
+  (Lit lit) -> tabs <> "Lit"
+  (Let groups expr) -> tabs <> "Let " <> "\n" <> showExprN (n+1) expr
+  (Case exprs branches) -> tabs <> "Case " <> "\n" <> mconcat [showExprN (n+1) expr | expr <- exprs]
+  -- _ -> "xd"
+  where
+    tabs = replicate n '\t'
+
+showExpr :: Expr -> String
+showExpr = showExprN 0
+
+foldMapExpr :: (Monoid m) => (Expr -> m) -> Expr -> m
+foldMapExpr acc e = case e of
+  Lam _ _ body -> acc e <> foldMapExpr acc body
+  Var _ _ -> acc e
+  App f xs -> acc e <> acc f <> mconcat (foldMapExpr acc <$> xs)
+  TypeLam _ body -> acc e <> foldMapExpr acc body
+  TypeApp expr _ -> acc e <> foldMapExpr acc expr
+  Con _ _ -> acc e
+  Lit _ -> acc e
+  Let _ body -> acc e <> foldMapExpr acc body
+  Case cases branches -> acc e <> mconcat (foldMapExpr acc <$> cases) <> 
+    mconcat [foldMapExpr acc e | branch <- branches, guard <- branchGuards branch, e <- [guardTest guard, guardExpr guard]]
+
+foldrExpr :: (Expr -> b -> b) -> b -> Expr -> b
+foldrExpr f z e = appEndo (foldMapExpr (Endo . f) e) z
+
+mapExpr :: (Expr -> Expr) -> Expr -> Expr
+mapExpr f e = foldrExpr (\e e1 -> f e) e e
+
+-- foldExpr :: (a -> Expr -> a) -> a -> Expr -> a
+-- foldExpr f z (Lam _ _ body) = f z $ foldExpr f z body
+-- foldExpr f z (Var _ _) = z
+-- foldExpr f z (TypeLam _ body) = undefined
 
 getName (TName name _) = name
 

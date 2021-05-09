@@ -18,6 +18,7 @@ module Core.Inlines ( -- Inline map
                     , extractInlineDef
                     ) where
 
+import Data.Monoid (Endo(..))
 import Lib.Trace
 import Data.Maybe
 import Common.Range
@@ -31,6 +32,8 @@ import Common.ColorScheme
 import Core.Core
 import Type.Pretty
 -- import qualified Core.CoreVar as CoreVar
+
+import Core.Pretty (prettyInlineDef)
 
 import Lib.Trace
 

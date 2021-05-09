@@ -28,7 +28,8 @@ module Compiler.Compile( -- * Compile
                        , CompileTarget(..)
                        ) where
 
-import Lib.Trace              ( trace )
+import qualified Core.Core
+import Lib.Trace
 import Data.Char              ( isAlphaNum, toLower, isSpace )
 
 import System.Directory       ( createDirectoryIfMissing, canonicalizePath, getCurrentDirectory )
@@ -46,7 +47,7 @@ import Common.File
 import Common.ColorScheme
 import Common.Message         ( table )
 import Common.Syntax
-import Syntax.Syntax
+import Syntax.Syntax hiding   ( defGroup )
 -- import Syntax.Lexer           ( readInput )
 import Syntax.Parse           ( parseProgramFromFile, parseValueDef, parseExpression, parseTypeDef, parseType )
 
@@ -61,6 +62,8 @@ import Core.Monadic           ( monTransform )
 import Core.MonadicLift       ( monadicLift )
 import Core.Inlines           ( inlinesExtends, extractInlineDefs )
 import Core.Inline            ( inlineDefs )
+import Core.Specialize        ( specializeAll )
+import Core.Pretty
 
 import Static.BindingGroups   ( bindingGroups )
 import Static.FixityResolve   ( fixityResolve, fixitiesNew, fixitiesCompose )
@@ -880,13 +883,17 @@ inferCheck loaded flags line coreImports program1
            (coreDefsSimp0,uniqueSimp0) = simplifyDefs False ndebug (simplify flags) (0) uniqueLift penv coreDefsLifted
 
        -- traceDefGroups "lifted" coreDefsSimp0
-
+       
+      --  traceShowM (prettyDefGroup penv <$> coreDefsSimp0)
+      --  traceM (unlines [show $ Core.Core.defExpr def | Core.Core.DefRec defs <- coreDefsSimp0, def <- defs])
+      --  traceShowM (prettyExpr penv <$> [Core.Core.defExpr def | Core.Core.DefRec defs <- coreDefsSimp0, def <- defs])
+       let coreDefsSpecialized = specializeAll coreDefsSimp0
 
        -- constructor tail optimization
        let (coreDefsCTail,uniqueCTail)
                   = if (optctail flags)
-                     then ctailOptimize penv (platform flags) newtypes gamma (optctailInline flags) coreDefsSimp0 uniqueSimp0
-                     else (coreDefsSimp0,uniqueSimp0)
+                     then ctailOptimize penv (platform flags) newtypes gamma (optctailInline flags) coreDefsSpecialized uniqueSimp0
+                     else (coreDefsSpecialized,uniqueSimp0)
 
        -- traceDefGroups "ctail" coreDefsCTail
 
