@@ -51,6 +51,8 @@ executables:
     main: Main.hs
     # source-dirs: app
     # dependencies: koka
+    default-extensions:
+      - FlexibleInstances
     other-extensions:
       - CPP
       - OverloadedStrings

@@ -1,4 +1,4 @@
-{-# LANGUAGE StandaloneDeriving, DerivingStrategies, DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving, DerivingStrategies, DeriveGeneric, PatternSynonyms, TypeSynonymInstances, FlexibleInstances, DeriveFunctor, DeriveFoldable #-}
 
 -----------------------------------------------------------------------------
 -- Copyright 2012 Microsoft Corporation.
@@ -84,7 +84,21 @@ module Core.Core ( -- Data structures
                    , Deps, dependencies
 
                    , foldMapExpr
-                   , showExpr
+
+                   , pattern TypeLam
+                   , pattern Lam
+                   , pattern Var
+                   , pattern App
+                   , pattern TypeApp
+                   , pattern Con
+                   , conName
+                  --  , caseExprs
+                   , caseBranches
+                   , caseExprs
+                   , pattern Lit
+                   , pattern Let
+                   , pattern Case
+                  --  , pattern L
                    ) where
 
 import Data.Char( isDigit )
@@ -432,60 +446,77 @@ defIsVal def
   Since this is System-F, all binding sites are annotated with their type.
 --------------------------------------------------------------------------}
 
-data Expr =
+data ExprF f =
   -- Core lambda calculus
-    Lam [TName] Effect Expr
-  | Var{ varName :: TName, varInfo :: VarInfo }  -- ^ typed name and possible typeArity/parameter arity tuple for top-level functions
-  | App Expr [Expr]                              -- ^ always fully applied!
+    LamF [TName] Effect f
+  | VarF { varNameF :: TName, varInfoF :: VarInfo }  -- ^ typed name and possible typeArity/parameter arity tuple for top-level functions
+  | AppF f [f]                              -- ^ always fully applied!
   -- Type (universal) abstraction/application
-  | TypeLam [TypeVar] Expr
-  | TypeApp Expr [Type]
+  | TypeLamF [TypeVar] f
+  | TypeAppF f [Type]
   -- Literals, constants and labels
-  | Con{ conName :: TName, conRepr ::  ConRepr  }          -- ^ typed name and its representation
-  | Lit Lit
+  | ConF { conNameF :: TName, conReprF ::  ConRepr  }          -- ^ typed name and its representation
+  | LitF Lit
   -- Let
-  | Let DefGroups Expr
+  | LetF DefGroups f
   -- Case expressions
-  | Case{ caseExprs :: [Expr], caseBranches :: [Branch] }
+  | CaseF { casefsF :: [f], caseBranchesF :: [Branch] }
+  deriving (Functor, Foldable)
+
+newtype Fix f = Fix { unFix :: f (Fix f) }
+
+pattern Lam names effects body = Fix (LamF names effects body)
+pattern Var{ varName, varInfo }  = Fix (VarF varName varInfo)
+pattern App f xs = Fix (AppF f xs)
+pattern TypeLam typeVars body = Fix (TypeLamF typeVars body)
+pattern TypeApp f xs = Fix (TypeAppF f xs)
+pattern Con { conName, conRepr } = Fix (ConF conName conRepr)
+pattern Lit lit = Fix (LitF lit)
+pattern Let groups body = Fix (LetF groups body)
+pattern Case { caseExprs, caseBranches } = Fix (CaseF caseExprs caseBranches)
+
+type Expr = Fix ExprF
 
 data TName = TName Name Type
 
-showExprN :: Int -> Expr -> String
-showExprN n e = case e of
-  (Lam _ _ body) -> tabs <> "Lam" <> "\n" <> showExprN (n+1) body <> "\n"
-  (Var name _) -> tabs <> "Var " <> show name
-  (App f xs) -> tabs <> "App " <> "\n" <> showExprN (n+1) f <> "\n" <> mconcat (showExprN (n+1) <$> xs)
-  (TypeLam vars body) -> tabs <> "TypeLam " <> "\n" <> mconcat [replicate (n+1) '\t' <> show var | var <- vars] <> "\n" <> showExprN (n+1) body
-  (TypeApp _ _) -> "TypeApp"
-  (Con name _) -> tabs <> "Con " <> show name
-  (Lit lit) -> tabs <> "Lit"
-  (Let groups expr) -> tabs <> "Let " <> "\n" <> showExprN (n+1) expr
-  (Case exprs branches) -> tabs <> "Case " <> "\n" <> mconcat [showExprN (n+1) expr | expr <- exprs]
-  -- _ -> "xd"
-  where
-    tabs = replicate n '\t'
+mapExpr :: (Expr -> Expr) -> Expr -> Expr
+mapExpr f (Fix e) = Fix $ fmap f e
 
-showExpr :: Expr -> String
-showExpr = showExprN 0
+-- showExprN :: Int -> Expr -> String
+-- showExprN n e = case e of
+--   (Lam _ _ body) -> tabs <> "Lam" <> "\n" <> showExprN (n+1) body <> "\n"
+--   (Var name _) -> tabs <> "Var " <> show name
+--   (App f xs) -> tabs <> "App " <> "\n" <> showExprN (n+1) f <> "\n" <> mconcat (showExprN (n+1) <$> xs)
+--   (TypeLam vars body) -> tabs <> "TypeLam " <> "\n" <> mconcat [replicate (n+1) '\t' <> show var | var <- vars] <> "\n" <> showExprN (n+1) body
+--   (TypeApp _ _) -> "TypeApp"
+--   (Con name _) -> tabs <> "Con " <> show name
+--   (Lit lit) -> tabs <> "Lit"
+--   (Let groups expr) -> tabs <> "Let " <> "\n" <> showExprN (n+1) expr
+--   (Case exprs branches) -> tabs <> "Case " <> "\n" <> mconcat [showExprN (n+1) expr | expr <- exprs]
+--   -- _ -> "xd"
+--   where
+--     tabs = replicate n '\t'
 
 foldMapExpr :: (Monoid m) => (Expr -> m) -> Expr -> m
-foldMapExpr acc e = case e of
-  Lam _ _ body -> acc e <> foldMapExpr acc body
-  Var _ _ -> acc e
-  App f xs -> acc e <> acc f <> mconcat (foldMapExpr acc <$> xs)
-  TypeLam _ body -> acc e <> foldMapExpr acc body
-  TypeApp expr _ -> acc e <> foldMapExpr acc expr
-  Con _ _ -> acc e
-  Lit _ -> acc e
-  Let _ body -> acc e <> foldMapExpr acc body
-  Case cases branches -> acc e <> mconcat (foldMapExpr acc <$> cases) <> 
-    mconcat [foldMapExpr acc e | branch <- branches, guard <- branchGuards branch, e <- [guardTest guard, guardExpr guard]]
+foldMapExpr f (Fix e) = foldMap f e
+-- foldMapExpr acc e = case e of
+--   Lam _ _ body -> acc e <> foldMapExpr acc body
+--   Var _ _ -> acc e
+--   App f xs -> acc e <> acc f <> mconcat (foldMapExpr acc <$> xs)
+--   TypeLam _ body -> acc e <> foldMapExpr acc body
+--   TypeApp expr _ -> acc e <> foldMapExpr acc expr
+--   Con _ _ -> acc e
+--   Lit _ -> acc e
+--   Let _ body -> acc e <> foldMapExpr acc body
+--   Case cases branches -> acc e <> mconcat (foldMapExpr acc <$> cases) <> 
+--     mconcat [foldMapExpr acc e | branch <- branches, guard <- branchGuards branch, e <- [guardTest guard, guardExpr guard]]
 
 foldrExpr :: (Expr -> b -> b) -> b -> Expr -> b
-foldrExpr f z e = appEndo (foldMapExpr (Endo . f) e) z
+-- foldrExpr f z e = appEndo (foldMapExpr (Endo . f) e) z
+foldrExpr f z (Fix e) = foldr f z e
 
-mapExpr :: (Expr -> Expr) -> Expr -> Expr
-mapExpr f e = foldrExpr (\e e1 -> f e) e e
+-- mapExpr :: (Expr -> Expr) -> Expr -> Expr
+-- mapExpr f e = foldrExpr (\e e1 -> f e) e e
 
 -- foldExpr :: (a -> Expr -> a) -> a -> Expr -> a
 -- foldExpr f z (Lam _ _ body) = f z $ foldExpr f z body
