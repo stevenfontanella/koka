@@ -83,11 +83,10 @@ module Core.Core ( -- Data structures
 
                    , Deps, dependencies
 
-                   , foldMapExpr
-
                    , pattern TypeLam
                    , pattern Lam
                    , pattern Var
+                   , varName
                    , pattern App
                    , pattern TypeApp
                    , pattern Con
@@ -99,6 +98,9 @@ module Core.Core ( -- Data structures
                    , pattern Let
                    , pattern Case
                   --  , pattern L
+                   , foldrExpr
+                   , foldMapExpr
+                   , mapExpr
                    ) where
 
 import Data.Char( isDigit )

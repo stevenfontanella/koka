@@ -46,14 +46,17 @@ type SpecializeM = Reader SpecializeState
 --   $ checkGroups groups
 
 specializeAll :: DefGroups -> DefGroups
-specializeAll groups = groups -- const groups $ runReader runSpecialize (SpecializeState known specializable)
-  -- where
-  --   specializable = getSpecializable groups
-  --   known = knownRHS groups
-  --   runSpecialize = undefined
+specializeAll groups = groups -- runReader runSpecialize (SpecializeState known specializable)
+  where
+    specializable = getSpecializable groups
+    known = knownRHS groups
+    runSpecialize = error "runSpecialize"
 
 specializeOne :: Def -> Name -> SpecializeM Def
-specializeOne def var = undefined
+specializeOne def toSpecialize = pure $ def { defExpr = Let [DefNonRec $ makeDef undefined undefined] $ mapExpr f $ defExpr def }
+  where
+    f var@(Var (TName name typ) info) | name == toSpecialize = var { varName = TName (newName "newName") typ }
+    f x = x
 
 -- specializeDef :: Def -> (Def, Def)
 -- specializeDef
